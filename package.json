@@ -122,7 +122,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "1.7.3",
-    "@blocknote/core": "^0.13.2",
+    "@blocknote/core": "^0.34.0",
     "@faker-js/faker": "^8.4.0",
     "@flydotio/dockerfile": "^0.5.8",
     "@next/bundle-analyzer": "^14.2.3",
