@@ -1,0 +1,1145 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-1.0.x"]
+}
+
+datasource db {
+  provider     = "postgresql"
+  url          = env("DATABASE_URL")
+  relationMode = "prisma"
+}
+
+generator json {
+  provider = "prisma-json-types-generator"
+}
+
+generator enums {
+  provider = "node prisma/enum-generator.cjs"
+}
+
+// Necessary for Next auth
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  password      String?
+  emailVerified DateTime?
+  image         String?
+
+  accounts          Account[]
+  sessions          Session[]
+  memberships       Member[]
+  passkeys          Passkey[]
+  verificationToken VerificationToken[]
+
+  lastSignedIn     DateTime @default(now())
+  identityProvider String?
+
+  accessTokens AccessToken[]
+}
+
+enum CredentialDeviceTypeEnum {
+  SINGLE_DEVICE
+  MULTI_DEVICE
+}
+
+model Passkey {
+  id                   String                   @id @default(cuid())
+  name                 String
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @default(now())
+  lastUsedAt           DateTime?
+  credentialId         Bytes
+  credentialPublicKey  Bytes
+  counter              BigInt
+  credentialDeviceType CredentialDeviceTypeEnum
+  credentialBackedUp   Boolean
+  transports           String[]
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model PasskeyVerificationToken {
+  id        String   @id @unique @default(cuid())
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model VerificationToken {
+  id          Int      @id @default(autoincrement())
+  secondaryId String   @unique @default(cuid())
+  identifier  String
+  token       String   @unique
+  expires     DateTime
+  createdAt   DateTime @default(now())
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([identifier, token])
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id      String   @id @default(cuid())
+  email   String
+  token   String   @unique
+  expires DateTime
+
+  @@unique([email, token])
+}
+
+model Company {
+  id                   String   @id @default(cuid())
+  name                 String
+  logo                 String?
+  publicId             String
+  website              String?
+  incorporationType    String
+  incorporationDate    DateTime
+  incorporationCountry String
+  incorporationState   String
+
+  streetAddress String
+  city          String
+  state         String
+  zipcode       String
+  country       String
+
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  updates          Update[]
+  users            Member[]
+  audits           Audit[]
+  shareClasses     ShareClass[]
+  equityPlans      EquityPlan[]
+  documents        Document[]
+  templates        Template[]
+  stakeholders     Stakeholder[]
+  investments      Investment[]
+  shares           Share[]
+  options          Option[]
+  safes            Safe[]
+  convertibleNotes ConvertibleNote[]
+  dataRooms        DataRoom[]
+  eSignAudits      EsignAudit[]
+  billingCustomers BillingCustomer[]
+  customRoles      CustomRole[]
+
+  BankAccount BankAccount[]
+
+  @@unique([publicId])
+}
+
+enum BankAccountTypeEnum {
+  CHECKING
+  SAVINGS
+}
+
+model BankAccount {
+  id                 String              @id @default(cuid())
+  beneficiaryName    String
+  beneficiaryAddress String
+  bankName           String
+  bankAddress        String
+  accountNumber      String // iban or account number
+  routingNumber      String // ABA or routing number
+  accountType        BankAccountTypeEnum @default(CHECKING)
+
+  // International bank information
+  swiftCode String? // BIC or SWIFT code
+
+  primary Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, accountNumber])
+  @@unique([companyId, primary], name: "unique_primary_account")
+  @@index([companyId])
+}
+
+enum MemberStatusEnum {
+  ACTIVE
+  INACTIVE
+  PENDING
+}
+
+enum Roles {
+  ADMIN
+  CUSTOM
+}
+
+model Member {
+  id           String           @id @default(cuid())
+  title        String?
+  status       MemberStatusEnum @default(PENDING)
+  isOnboarded  Boolean          @default(false)
+  role         Roles?           @default(ADMIN)
+  workEmail    String?
+  lastAccessed DateTime         @default(now())
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  customRoleId String?
+  customRole   CustomRole? @relation(fields: [customRoleId], references: [id])
+
+  documentReceived EsignRecipient[]
+  documents        Document[]
+  templates        Template[]
+  updates          Update[]
+  dataRooms        DataRoomRecipient[]
+  UpdateRecipient  UpdateRecipient[]
+
+  @@unique([companyId, userId])
+  @@index([companyId])
+  @@index([status])
+  @@index([userId])
+  @@index([customRoleId])
+}
+
+model CustomRole {
+  id   String @id @default(cuid())
+  name String
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+
+  permissions Json[]
+  member      Member[]
+
+  @@index([companyId])
+}
+
+enum StakeholderTypeEnum {
+  INDIVIDUAL
+  INSTITUTION
+}
+
+enum StakeholderRelationshipEnum {
+  ADVISOR
+  BOARD_MEMBER
+  CONSULTANT
+  EMPLOYEE
+  EX_ADVISOR
+  EX_CONSULTANT
+  EX_EMPLOYEE
+  EXECUTIVE
+  FOUNDER
+  INVESTOR
+  NON_US_EMPLOYEE
+  OFFICER
+  OTHER
+}
+
+model Stakeholder {
+  id                  String                      @id @default(cuid())
+  name                String
+  email               String                      @unique
+  institutionName     String?
+  stakeholderType     StakeholderTypeEnum         @default(INDIVIDUAL)
+  currentRelationship StakeholderRelationshipEnum @default(EMPLOYEE)
+  taxId               String?
+
+  streetAddress String?
+  city          String?
+  state         String?
+  zipcode       String?
+  country       String  @default("US")
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  investments      Investment[]
+  shares           Share[]
+  options          Option[]
+  safes            Safe[]
+  convertibleNotes ConvertibleNote[]
+  updates          UpdateRecipient[]
+  dataRooms        DataRoomRecipient[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+}
+
+model Audit {
+  id         String   @id @default(cuid())
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  summary    String?
+  action     String
+  occurredAt DateTime @default(now())
+  actor      Json
+  target     Json[]
+  context    Json
+
+  @@index([companyId])
+}
+
+enum ShareTypeEnum {
+  COMMON
+  PREFERRED
+}
+
+enum SharePrefixEnum {
+  CS // Common Shares
+  PS // Preferred Shares
+}
+
+enum ConversionRightsEnum {
+  CONVERTS_TO_FUTURE_ROUND
+  CONVERTS_TO_SHARE_CLASS_ID
+}
+
+// Based on OCF format
+// https://open-cap-table-coalition.github.io/Open-Cap-Format-OCF/schema_markdown/schema/objects/StockClass/
+model ShareClass {
+  id                      String          @id @default(cuid())
+  idx                     Int // auto-generated, auto-incremented based on company
+  name                    String
+  classType               ShareTypeEnum   @default(COMMON)
+  prefix                  SharePrefixEnum @default(CS)
+  initialSharesAuthorized BigInt
+  boardApprovalDate       DateTime
+  stockholderApprovalDate DateTime
+  votesPerShare           Int
+  parValue                Float
+  pricePerShare           Float
+  seniority               Int
+
+  // Conversion Rights
+  conversionRights       ConversionRightsEnum @default(CONVERTS_TO_FUTURE_ROUND)
+  convertsToShareClassId String?
+
+  liquidationPreferenceMultiple Float
+  participationCapMultiple      Float
+
+  companyId   String
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  equityPlans EquityPlan[]
+  investments Investment[]
+  shares      Share[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, idx])
+  @@index([companyId])
+}
+
+enum CancellationBehaviorEnum {
+  RETIRE
+  RETURN_TO_POOL
+  HOLD_AS_CAPITAL_STOCK
+  DEFINED_PER_PLAN_SECURITY
+}
+
+model EquityPlan {
+  id                         String                   @id @default(cuid())
+  name                       String
+  boardApprovalDate          DateTime
+  planEffectiveDate          DateTime?
+  initialSharesReserved      BigInt
+  defaultCancellatonBehavior CancellationBehaviorEnum
+  comments                   String?
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  shareClassId String
+  shareClass   ShareClass @relation(fields: [shareClassId], references: [id], onDelete: Cascade)
+
+  options Option[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([shareClassId])
+  @@index([companyId])
+}
+
+model Bucket {
+  id       String   @id @default(cuid())
+  name     String
+  key      String
+  mimeType String
+  size     Int
+  tags     String[]
+
+  documents Document[]
+  templates Template[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Document {
+  id       String @id @default(cuid())
+  publicId String
+  name     String
+
+  bucketId String
+  bucket   Bucket @relation(fields: [bucketId], references: [id], onDelete: Cascade)
+
+  uploaderId String?
+  uploader   Member? @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  shareId String?
+  share   Share?  @relation(fields: [shareId], references: [id], onDelete: SetNull)
+
+  optionId String?
+  option   Option? @relation(fields: [optionId], references: [id], onDelete: SetNull)
+
+  safeId String?
+  safe   Safe?   @relation(fields: [safeId], references: [id], onDelete: SetNull)
+
+  convertibleNoteId String?
+  convertibleNote   ConvertibleNote? @relation(fields: [convertibleNoteId], references: [id], onDelete: SetNull)
+
+  documentShares DocumentShare[]
+  dataRooms      DataRoomDocument[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([publicId])
+  @@index([bucketId])
+  @@index([uploaderId])
+  @@index([companyId])
+  @@index([shareId])
+  @@index([optionId])
+  @@index([safeId])
+  @@index([convertibleNoteId])
+}
+
+model DataRoom {
+  id         String              @id @default(cuid())
+  name       String
+  publicId   String
+  public     Boolean             @default(false)
+  documents  DataRoomDocument[]
+  recipients DataRoomRecipient[]
+  companyId  String
+  company    Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([publicId])
+  @@unique([companyId, name])
+  @@index([publicId])
+  @@index([companyId])
+}
+
+model DataRoomDocument {
+  id         String   @id @default(cuid())
+  dataRoomId String
+  documentId String
+  dataRoom   DataRoom @relation(fields: [dataRoomId], references: [id], onDelete: Cascade)
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([dataRoomId, documentId])
+  @@index([dataRoomId])
+  @@index([documentId])
+}
+
+model DataRoomRecipient {
+  id         String   @id @default(cuid())
+  name       String?
+  email      String
+  dataRoomId String
+  dataRoom   DataRoom @relation(fields: [dataRoomId], references: [id], onDelete: Cascade)
+
+  memberId String?
+  member   Member? @relation(fields: [memberId], references: [id], onDelete: SetNull)
+
+  stakeholderId String?
+  stakeholder   Stakeholder? @relation(fields: [stakeholderId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([dataRoomId, email])
+  @@index([id, dataRoomId])
+  @@index([memberId])
+  @@index([dataRoomId])
+  @@index([stakeholderId])
+}
+
+model UpdateRecipient {
+  id       String  @id @default(cuid())
+  name     String?
+  email    String
+  updateId String
+  update   Update  @relation(fields: [updateId], references: [id], onDelete: Cascade)
+
+  memberId String?
+  member   Member? @relation(fields: [memberId], references: [id], onDelete: SetNull)
+
+  stakeholderId String?
+  stakeholder   Stakeholder? @relation(fields: [stakeholderId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([updateId, email])
+  @@index([id, updateId])
+  @@index([memberId])
+  @@index([updateId])
+  @@index([stakeholderId])
+}
+
+model DocumentShare {
+  id       String @id @default(cuid())
+  link     String
+  publicId String
+
+  linkExpiresAt DateTime
+  recipients    String[] @default([])
+
+  emailProtected Boolean @default(false)
+
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([documentId])
+}
+
+enum FieldTypes {
+  TEXT
+  RADIO
+  EMAIL
+  DATE
+  DATETIME
+  TEXTAREA
+  CHECKBOX
+  SIGNATURE
+  SELECT
+}
+
+model TemplateField {
+  id             String         @id @default(cuid())
+  name           String
+  type           FieldTypes     @default(TEXT)
+  defaultValue   String         @default("")
+  readOnly       Boolean        @default(false)
+  required       Boolean        @default(false)
+  prefilledValue String?
+  top            Int
+  left           Int
+  width          Int
+  height         Int
+  recipientId    String
+  recipient      EsignRecipient @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  template       Template       @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  templateId     String
+  viewportHeight Int
+  viewportWidth  Int
+  page           Int
+
+  /// [TemplateFieldMeta]
+  meta Json @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([templateId])
+  @@index([recipientId])
+}
+
+enum TemplateStatus {
+  DRAFT
+  COMPLETE
+  PENDING
+  CANCELLED
+}
+
+model Template {
+  id              String         @id @default(cuid())
+  publicId        String
+  name            String
+  status          TemplateStatus @default(DRAFT)
+  orderedDelivery Boolean        @default(false)
+  message         String?
+
+  bucketId String
+  bucket   Bucket @relation(fields: [bucketId], references: [id], onDelete: Cascade)
+
+  uploaderId String
+  uploader   Member @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  fields         TemplateField[]
+  eSignRecipient EsignRecipient[]
+
+  completedOn DateTime?
+  eSignAudits EsignAudit[]
+
+  @@index([bucketId])
+  @@index([uploaderId])
+  @@index([companyId])
+}
+
+enum EsignRecipientStatus {
+  SENT
+  SIGNED
+  PENDING
+}
+
+model EsignRecipient {
+  id    String  @id @default(cuid())
+  email String
+  name  String?
+
+  templateId String
+  template   Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  status EsignRecipientStatus @default(PENDING)
+
+  memberId String?
+  member   Member? @relation(fields: [memberId], references: [id], onDelete: SetNull)
+
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  templateFields TemplateField[]
+  eSignAudits    EsignAudit[]
+
+  @@index([memberId])
+  @@index([templateId])
+}
+
+enum SecuritiesStatusEnum {
+  ACTIVE
+  DRAFT
+  SIGNED
+  PENDING
+}
+
+enum ShareLegendsEnum {
+  US_SECURITIES_ACT // US Securities Act of 1933
+  SALE_AND_ROFR // Sale and Right of first refusal
+  TRANSFER_RESTRICTIONS // Bylaw transfer restrictions
+}
+
+model Share {
+  id     String               @id @default(cuid())
+  status SecuritiesStatusEnum @default(DRAFT)
+
+  certificateId       String
+  quantity            Int // Number of shares
+  pricePerShare       Float?
+  capitalContribution Float? // Total amount of money contributed/invested
+  ipContribution      Float? // Value of the intellectual property contributed
+  debtCancelled       Float? // Amount of debt cancelled
+  otherContributions  Float? // Other contributions
+
+  cliffYears   Int @default(0) // 0 means immediate vesting, 1 means vesting starts after 1 year
+  vestingYears Int @default(0) // 0 means immediate vesting, 1 means vesting over 1 year
+
+  companyLegends ShareLegendsEnum[] @default([])
+
+  issueDate         DateTime
+  rule144Date       DateTime?
+  vestingStartDate  DateTime?
+  boardApprovalDate DateTime
+
+  stakeholderId String
+  stakeholder   Stakeholder @relation(fields: [stakeholderId], references: [id], onDelete: Cascade)
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  shareClassId String
+  shareClass   ShareClass @relation(fields: [shareClassId], references: [id], onDelete: Cascade)
+
+  documents Document[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, certificateId])
+  @@index([companyId])
+  @@index([shareClassId])
+  @@index([stakeholderId])
+}
+
+enum OptionTypeEnum {
+  ISO // Incentive Stock Options
+  NSO // Non-satutory Stock Options
+  RSU // Restricted Stock Units
+}
+
+enum OptionStatusEnum {
+  DRAFT
+  ACTIVE
+  EXERCISED
+  EXPIRED
+  CANCELLED
+}
+
+model Option {
+  id            String @id @default(cuid())
+  grantId       String
+  quantity      Int
+  exercisePrice Float
+
+  type         OptionTypeEnum
+  status       OptionStatusEnum @default(DRAFT)
+  cliffYears   Int              @default(0) // 0 means immediate vesting, 1 means vesting starts after 1 year
+  vestingYears Int              @default(0) // 0 means immediate vesting, 1 means vesting over 1 year
+
+  issueDate         DateTime
+  expirationDate    DateTime
+  vestingStartDate  DateTime
+  boardApprovalDate DateTime
+  rule144Date       DateTime
+
+  documents Document[]
+
+  stakeholderId String
+  stakeholder   Stakeholder @relation(fields: [stakeholderId], references: [id], onDelete: Cascade)
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  equityPlanId String
+  equityPlan   EquityPlan @relation(fields: [equityPlanId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, grantId])
+  @@index([companyId])
+  @@index([equityPlanId])
+  @@index([stakeholderId])
+}
+
+model Investment {
+  id       String   @id @default(cuid())
+  amount   Float // Amount of money invested
+  shares   BigInt // Number of shares issued to the investor at the time of investment
+  date     DateTime
+  comments String?
+
+  shareClassId String
+  shareClass   ShareClass @relation(fields: [shareClassId], references: [id], onDelete: Cascade)
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  // Investors => StakeholderRelationshipEnum["INVESTOR"]
+  stakeholderId String
+  stakeholder   Stakeholder @relation(fields: [stakeholderId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([stakeholderId])
+  @@index([shareClassId])
+}
+
+enum SafeTypeEnum {
+  PRE_MONEY
+  POST_MONEY
+}
+
+enum SafeStatusEnum {
+  DRAFT
+  ACTIVE
+  PENDING
+  EXPIRED
+  CANCELLED
+}
+
+// YC Standard Safe
+enum SafeTemplateEnum {
+  POST_MONEY_CAP      @map("Valuation Cap, no Discount")
+  POST_MONEY_DISCOUNT @map("Discount, no Valuation Cap")
+  POST_MONEY_MFN      @map("MFN, no Valuation Cap, no Discount")
+
+  POST_MONEY_CAP_WITH_PRO_RATA      @map("Valuation Cap, no Discount, include Pro Rata Rights")
+  POST_MONEY_DISCOUNT_WITH_PRO_RATA @map("Discount, no Valuation Cap, include Pro Rata Rights")
+  POST_MONEY_MFN_WITH_PRO_RATA      @map("MFN, no Valuation Cap, no Discount, include Pro Rata Rights")
+
+  CUSTOM @map("Custom")
+}
+
+model Safe {
+  id           String            @id @default(cuid())
+  publicId     String // eg. SAFE-01
+  type         SafeTypeEnum      @default(POST_MONEY)
+  status       SafeStatusEnum    @default(DRAFT)
+  capital      Float // Amount of money invested
+  safeTemplate SafeTemplateEnum?
+  safeId       String?
+
+  valuationCap    Float?
+  discountRate    Float?
+  mfn             Boolean @default(false) // Most Favored Nation
+  proRata         Boolean @default(false) // Pro Rata Rights
+  additionalTerms String?
+
+  documents Document[]
+
+  stakeholderId String
+  stakeholder   Stakeholder @relation(fields: [stakeholderId], references: [id], onDelete: Cascade)
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  issueDate         DateTime
+  boardApprovalDate DateTime
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([publicId, companyId])
+  @@index([companyId])
+  @@index([stakeholderId])
+}
+
+enum ConvertibleStatusEnum {
+  DRAFT
+  ACTIVE
+  PENDING
+  EXPIRED
+  CANCELLED
+}
+
+enum ConvertibleTypeEnum {
+  CCD // Compulsory Convertible Debenture
+  OCD // Optionally Convertible Debenture
+  NOTE // Simple Convertible note
+}
+
+enum ConvertibleInterestMethodEnum {
+  SIMPLE
+  COMPOUND
+}
+
+enum ConvertibleInterestAccrualEnum {
+  DAILY
+  MONTHLY
+  SEMI_ANNUALLY
+  ANNUALLY
+  YEARLY
+  CONTINUOUSLY
+}
+
+enum ConvertibleInterestPaymentScheduleEnum {
+  DEFERRED
+  PAY_AT_MATURITY
+}
+
+model ConvertibleNote {
+  id       String                @id @default(cuid())
+  publicId String // eg. CN-01
+  status   ConvertibleStatusEnum @default(DRAFT)
+  type     ConvertibleTypeEnum   @default(NOTE)
+  capital  Float // Amount of money invested
+
+  conversionCap   Float?
+  discountRate    Float?
+  mfn             Boolean? // Most Favored Nation
+  additionalTerms String?
+
+  interestRate            Float?
+  interestMethod          ConvertibleInterestMethodEnum?
+  interestAccrual         ConvertibleInterestAccrualEnum?
+  interestPaymentSchedule ConvertibleInterestPaymentScheduleEnum?
+
+  documents Document[]
+
+  stakeholderId String
+  stakeholder   Stakeholder @relation(fields: [stakeholderId], references: [id], onDelete: Cascade)
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  issueDate         DateTime
+  boardApprovalDate DateTime
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([publicId, companyId])
+  @@index([companyId])
+  @@index([stakeholderId])
+}
+
+enum UpdateStatusEnum {
+  DRAFT
+  PUBLIC
+  PRIVATE
+}
+
+model Update {
+  id       String           @id @default(cuid())
+  publicId String
+  title    String
+  content  Json
+  html     String
+  public   Boolean          @default(false)
+  status   UpdateStatusEnum @default(DRAFT)
+
+  authorId  String
+  companyId String
+
+  recipients UpdateRecipient[]
+  author     Member            @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  company    Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([publicId])
+  @@index([publicId])
+  @@index([authorId])
+  @@index([companyId])
+}
+
+model EsignAudit {
+  id String @id @default(cuid())
+
+  companyId   String
+  company     Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  templateId  String
+  template    Template        @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  recipientId String?
+  recipient   EsignRecipient? @relation(fields: [recipientId], references: [id], onDelete: SetNull)
+
+  action    String
+  ip        String
+  userAgent String
+  location  String
+  summary   String
+
+  occurredAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([templateId])
+  @@index([recipientId])
+}
+
+enum PricingType {
+  one_time
+  recurring
+}
+
+enum PricingPlanInterval {
+  day
+  week
+  month
+  year
+}
+
+enum SubscriptionStatus {
+  trialing
+  active
+  canceled
+  incomplete
+  incomplete_expired
+  past_due
+  unpaid
+  paused
+}
+
+model BillingProduct {
+  id String @id
+  // Product ID from Stripe, e.g. prod_1234.
+
+  active Boolean
+  // Whether the product is currently available for purchase.
+
+  name String
+  // The product's name, meant to be displayable to the customer. Whenever this product is sold via a subscription, name will show up on associated invoice line item descriptions.
+
+  description String?
+  // The product's description.
+
+  metadata Json?
+  // additional data.
+
+  prices BillingPrice[]
+}
+
+model BillingPrice {
+  id String @id
+  // Price ID from Stripe, e.g. price_1234.
+
+  productId String
+
+  active Boolean
+  // Whether the price can be used for new purchases.
+
+  description String?
+  // A brief description of the price.
+
+  unitAmount BigInt?
+  // The unit amount as a positive integer in the smallest currency unit (e.g., 100 cents for US$1.00 or 100 for ¥100, a zero-decimal currency).
+
+  currency String @db.Char(3)
+  // Three-letter ISO currency code, in lowercase.
+
+  type PricingType
+
+  interval PricingPlanInterval?
+
+  intervalCount Int?
+  // The number of intervals (specified in the `interval` attribute) between subscription billings. For example, `interval=month` and `interval_count=3` bills every 3 months.
+
+  trialPeriodDays Int?
+  // Default number of trial days when subscribing a customer to this price using [`trial_from_plan=true`](https://stripe.com/docs/api#create_subscription-trial_from_plan).
+
+  metadata Json?
+  // additional data.
+
+  product      BillingProduct        @relation(fields: [productId], references: [id])
+  Subscription BillingSubscription[]
+
+  @@index([productId])
+}
+
+model BillingSubscription {
+  id String @id
+  // Subscription ID from Stripe, e.g. sub_1234.
+
+  priceId String
+  // ID of the price that created this subscription.
+
+  quantity Int
+  // Quantity multiplied by the unit amount of the price creates the amount of the subscription. Can be used to charge multiple seats.
+
+  status SubscriptionStatus
+
+  cancelAtPeriodEnd Boolean
+  // If true the subscription has been canceled by the user and will be deleted at the end of the billing period.
+
+  created DateTime @default(now())
+  // Time at which the subscription was created.
+
+  currentPeriodStart DateTime @default(now())
+  // Start of the current period that the subscription has been invoiced for.
+
+  currentPeriodEnd DateTime @default(now())
+  // End of the current period that the subscription has been invoiced for. At the end of this period, a new invoice will be created.
+
+  endedAt DateTime?
+  // If the subscription has ended, the timestamp of the date the subscription ended.
+
+  cancelAt DateTime?
+  /// A date in the future at which the subscription will automatically get canceled.
+
+  canceledAt DateTime?
+  // If the subscription has been canceled, the date of that cancellation. If the subscription was canceled with `cancel_at_period_end`, `canceled_at` will still reflect the date of the initial cancellation request, not the end of the subscription period when the subscription is automatically moved to a canceled state.
+
+  trialStart DateTime?
+  // If the subscription has a trial, the beginning of that trial.
+
+  trialEnd DateTime?
+  // If the subscription has a trial, the end of that trial.
+
+  metadata Json?
+  // additional data.
+
+  price BillingPrice @relation(fields: [priceId], references: [id])
+
+  customer   BillingCustomer @relation(fields: [customerId], references: [id])
+  customerId String
+
+  @@index([priceId])
+  @@index([customerId])
+}
+
+model BillingCustomer {
+  id        String  @id
+  companyId String?
+
+  company       Company?              @relation(fields: [companyId], references: [id])
+  subscriptions BillingSubscription[]
+
+  @@index([companyId])
+}
+
+enum AccessTokenType {
+  sig @map("Signature token")
+  doc @map("Data room token")
+  api @map("API access token")
+  upd @map("Investor update token")
+}
+
+model AccessToken {
+  id           String          @id @default(cuid())
+  active       Boolean         @default(true)
+  clientId     String
+  clientSecret String // Hashed with scrypt
+  typeEnum     AccessTokenType @default(api)
+
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
+
+  expiresAt DateTime?
+  lastUsed  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([typeEnum, clientId])
+}
