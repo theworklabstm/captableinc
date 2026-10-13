@@ -1,8 +1,6 @@
 import withBundleAnalyzer from "@next/bundle-analyzer";
 import { withSentryConfig } from "@sentry/nextjs";
-import { createRequire } from 'module';
 
-const require = createRequire(import.meta.url);
 
 const bundleAnalyzer = withBundleAnalyzer({
   enabled: process.env.ANALYZE === "true",
@@ -72,4 +70,3 @@ export default hasSentry
       hideSourceMaps: true,
       disableLogger: true,
     });
-  : bundleAnalyzer(nextConfig);
